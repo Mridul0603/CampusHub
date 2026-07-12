@@ -34,6 +34,8 @@ export default function App() {
             <Route path="/placement" element={<AppLayout><PlacementPage /></AppLayout>} />
           </Route>
 
+          {/* Redirect /dashboard and / to /notices */}
+          <Route path="/dashboard" element={<Navigate to="/notices" replace />} />
           <Route path="/" element={<Navigate to="/notices" replace />} />
           <Route path="/unauthorized" element={
             <div className="min-h-screen flex items-center justify-center">

@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status, Cookie
+from fastapi import Depends, HTTPException, status, Cookie, Request
 from sqlalchemy.orm import Session
 from jose import JWTError
 import uuid
@@ -10,24 +10,33 @@ from app.models.user import User, UserRole
 
 
 def get_current_user(
-    access_token: str | None = Cookie(default=None),
+    request: Request,
     db: Session = Depends(get_db),
 ) -> User:
     """
-    Core auth dependency. Validates JWT from httpOnly cookie.
-    Inject this into any route that requires authentication.
+    Auth dependency. Reads JWT from:
+    1. httpOnly cookie (preferred)
+    2. Authorization: Bearer header (fallback for cross-origin)
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Not authenticated",
-        headers={"WWW-Authenticate": "Bearer"},
     )
 
-    if not access_token:
+    # Try cookie first
+    token = request.cookies.get("access_token")
+
+    # Fallback to Authorization header
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+
+    if not token:
         raise credentials_exception
 
     try:
-        payload = decode_access_token(access_token)
+        payload = decode_access_token(token)
         user_id: str = payload.get("sub")
         if not user_id:
             raise credentials_exception
@@ -42,18 +51,6 @@ def get_current_user(
 
 
 def require_roles(*roles: UserRole):
-    """
-    Factory that returns a dependency enforcing one of the given roles.
-
-    Usage:
-        @router.post("/admin-only")
-        def admin_route(user = Depends(require_roles(UserRole.admin))):
-            ...
-
-        @router.post("/faculty-or-admin")
-        def faculty_route(user = Depends(require_roles(UserRole.faculty, UserRole.admin))):
-            ...
-    """
     def _check(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in roles:
             raise HTTPException(
